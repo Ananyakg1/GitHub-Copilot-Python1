@@ -107,6 +107,11 @@ jobs:
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
         auth-type: SERVICE_PRINCIPAL
 
+    - name: Debug Subscription ID
+      run: echo "Length: ${#AZURE_SUBSCRIPTION_ID}"
+      env:
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
     - name: Login to Azure Container Registry
       run: |
         echo ${{ secrets.REGISTRY_PASSWORD }} | docker login ${{ secrets.REGISTRY_LOGIN_SERVER }} -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
