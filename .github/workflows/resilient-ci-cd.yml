@@ -1,0 +1,211 @@
+name: Resilient CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  APP_NAME: python-flask-app
+  IMAGE_NAME: python-flask-app
+  NAMESPACE: github-copilot-ns
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-test.txt
+
+    - name: Run Python tests
+      run: |
+        python -m pytest test_app.py -v --tb=short
+
+    # Alternative Security Scanning (No authentication required)
+    - name: Install security tools
+      run: |
+        pip install safety bandit
+      continue-on-error: true
+
+    - name: Run Safety dependency scan
+      run: |
+        echo "Running Safety security scan..."
+        safety check --file requirements.txt --json || echo "Safety scan completed with issues"
+      continue-on-error: true
+
+    - name: Run Bandit code security scan
+      run: |
+        echo "Running Bandit security scan..."
+        bandit -r . -f json || echo "Bandit scan completed with issues"
+      continue-on-error: true
+
+    # Snyk scanning (with better error handling)
+    - name: Install Snyk CLI
+      run: |
+        curl -Lo snyk https://github.com/snyk/snyk/releases/latest/download/snyk-linux
+        chmod +x snyk
+        sudo mv snyk /usr/local/bin/
+      continue-on-error: true
+
+    - name: Try Snyk authentication
+      run: |
+        if [ -z "${{ secrets.SNYK_TOKEN }}" ]; then
+          echo "SNYK_TOKEN secret is not set - skipping Snyk scans"
+          echo "SNYK_AVAILABLE=false" >> $GITHUB_ENV
+        else
+          echo "Attempting Snyk authentication..."
+          if snyk auth ${{ secrets.SNYK_TOKEN }}; then
+            echo "Snyk authentication successful"
+            echo "SNYK_AVAILABLE=true" >> $GITHUB_ENV
+          else
+            echo "Snyk authentication failed - continuing without Snyk"
+            echo "SNYK_AVAILABLE=false" >> $GITHUB_ENV
+          fi
+        fi
+      continue-on-error: true
+
+    - name: Snyk dependency scan (conditional)
+      if: env.SNYK_AVAILABLE == 'true'
+      run: |
+        echo "Running Snyk dependency scan..."
+        snyk test --severity-threshold=high --file=requirements.txt
+      continue-on-error: true
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      run: |
+        docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+        docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ env.IMAGE_NAME }}:latest
+
+    # Container security scanning with Trivy (no auth required)
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+        format: 'table'
+        exit-code: '0'  # Don't fail the pipeline
+      continue-on-error: true
+
+    - name: Snyk container scan (conditional)
+      if: env.SNYK_AVAILABLE == 'true'
+      run: |
+        echo "Running Snyk container scan..."
+        snyk container test ${{ env.IMAGE_NAME }}:${{ github.sha }} --severity-threshold=high
+      continue-on-error: true
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: |
+          {
+            "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+            "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+            "subscriptionId": "${{ secrets.AZURE_SUSCRIPTION_ID }}",
+            "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+          }
+
+    - name: Login to Azure Container Registry
+      run: |
+        echo ${{ secrets.REGISTRY_PASSWORD }} | docker login ${{ secrets.REGISTRY_LOGIN_SERVER }} -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
+
+    - name: Push Docker image to ACR
+      run: |
+        docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+        docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+        docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
+
+    - name: Generate security reports
+      run: |
+        echo "Security scanning summary:"
+        echo "- Safety: Python dependency security scan"
+        echo "- Bandit: Python code security analysis"
+        echo "- Trivy: Container vulnerability scanning"
+        if [ "${{ env.SNYK_AVAILABLE }}" == "true" ]; then
+          echo "- Snyk: Available and used"
+          snyk monitor --file=requirements.txt || echo "Snyk monitoring completed"
+        else
+          echo "- Snyk: Not available (token issues)"
+        fi
+      continue-on-error: true
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Azure Login
+      uses: azure/login@v1
+      with:
+        creds: |
+          {
+            "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+            "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+            "subscriptionId": "${{ secrets.AZURE_SUSCRIPTION_ID }}",
+            "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+          }
+
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@v3
+      with:
+        version: '1.28.0'
+
+    - name: Get AKS credentials
+      run: |
+        az aks get-credentials --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} --name ${{ secrets.AKS_CLUSTER_NAME }} --overwrite-existing
+
+    - name: Replace variables in deployment file
+      run: |
+        sed -i 's|${REGISTRY_LOGIN_SERVER}|${{ secrets.REGISTRY_LOGIN_SERVER }}|g' k8s-deployment.yaml
+        sed -i 's|${IMAGE_NAME}|${{ env.IMAGE_NAME }}|g' k8s-deployment.yaml
+        sed -i 's|${GITHUB_SHA}|${{ github.sha }}|g' k8s-deployment.yaml
+
+    - name: Deploy to Kubernetes
+      run: |
+        kubectl apply -f k8s-deployment.yaml
+
+    - name: Verify deployment
+      run: |
+        kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+        kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }}
+        kubectl get svc -n ${{ env.NAMESPACE }} ${{ env.APP_NAME }}-service
+
+    - name: Health check
+      run: |
+        kubectl wait --for=condition=ready pod -l app=${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+        echo "Application deployed successfully!"
+
+    - name: Get application URL
+      run: |
+        echo "Application is running in namespace: ${{ env.NAMESPACE }}"
+        echo "Service name: ${{ env.APP_NAME }}-service"
+        echo "To access the application, use port forwarding:"
+        echo "kubectl port-forward svc/${{ env.APP_NAME }}-service 8080:80 -n ${{ env.NAMESPACE }}"
