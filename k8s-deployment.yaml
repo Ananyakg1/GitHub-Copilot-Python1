@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: python-flask-app
-        image: ${REGISTRY_LOGIN_SERVER}/${IMAGE_NAME}:latest
+        image: REGISTRY_LOGIN_SERVER/python-flask-app:latest
         ports:
         - containerPort: 8080
           name: http
