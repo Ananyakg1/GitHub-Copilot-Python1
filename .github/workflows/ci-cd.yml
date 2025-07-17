@@ -136,9 +136,9 @@ jobs:
       - name: Deploy to AKS
         run: |
           kubectl apply -f k8s-deployment.yaml
-      - name: Wait for pod readiness
+      - name: Wait for deployment rollout
         run: |
-          kubectl wait --for=condition=ready pod -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+          kubectl rollout status deployment/python-flask-app -n ${{ env.K8S_NAMESPACE }} --timeout=300s
       - name: Debug failed pods if not all ready
         if: failure()
         run: |
