@@ -143,7 +143,20 @@ jobs:
 
       - name: Verify deployment
         run: |
-          kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s
+          set -e
+          kubectl rollout status deployment/${{ env.APP_NAME }} -n ${{ env.NAMESPACE }} --timeout=300s || {
+            echo 'Rollout failed. Printing pod status and events:';
+            kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }};
+            for pod in $(kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }} -o jsonpath='{.items[*].metadata.name}'); do
+              echo "\n--- Describe pod: $pod ---";
+              kubectl describe pod $pod -n ${{ env.NAMESPACE }};
+              echo "\n--- Logs for pod: $pod ---";
+              kubectl logs $pod -n ${{ env.NAMESPACE }} || true;
+            done
+            echo '\n--- Recent events in namespace ---';
+            kubectl get events -n ${{ env.NAMESPACE }} --sort-by=.metadata.creationTimestamp | tail -30;
+            exit 1;
+          }
           kubectl get pods -n ${{ env.NAMESPACE }} -l app=${{ env.APP_NAME }}
           kubectl get svc -n ${{ env.NAMESPACE }}
 
