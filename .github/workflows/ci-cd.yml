@@ -1,4 +1,5 @@
 
+
 name: CI/CD Pipeline
 
 on:
@@ -12,206 +13,135 @@ env:
   K8S_NAMESPACE: github-copilot-ns
 
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        if [ -f requirements-test.txt ]; then
-          pip install -r requirements-test.txt
-        fi
-    
-    - name: Run Snyk security scan
-      uses: snyk/actions/python-3.11@master
-      continue-on-error: true
-      env:
-        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-      with:
-        args: --severity-threshold=high
-    
-    - name: Run tests
-      run: |
-        python -m pytest test_app.py -v --junitxml=junit/test-results.xml
-    
-    - name: Run linting
-      run: |
-        python -m pylint app.py --exit-zero --output-format=parseable --reports=no > pylint-report.txt
-    
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      if: always()
-      with:
-        name: test-results
-        path: |
-          junit/test-results.xml
-          pylint-report.txt
-
-  build-and-push-docker:
-    needs: build-and-test
+  build:
     runs-on: ubuntu-latest
     outputs:
-      image-tag: ${{ steps.build.outputs.tags }}
-      image-digest: ${{ steps.build.outputs.digest }}
-    
+      build_id: ${{ steps.build_tag.outputs.BUILD_ID }}
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v3
-    
-    - name: Check required secrets
-      run: |
-        echo "Checking required secrets..."
-        if [ -z "${{ secrets.REGISTRY_LOGIN_SERVER }}" ]; then
-          echo "❌ REGISTRY_LOGIN_SERVER secret is not set"
-          exit 1
-        fi
-        if [ -z "${{ secrets.REGISTRY_USERNAME }}" ]; then
-          echo "❌ REGISTRY_USERNAME secret is not set"
-          exit 1
-        fi
-        if [ -z "${{ secrets.REGISTRY_PASSWORD }}" ]; then
-          echo "❌ REGISTRY_PASSWORD secret is not set"
-          exit 1
-        fi
-        echo "✅ All registry secrets are configured"
-    
-    - name: Log in to Azure Container Registry
-      uses: docker/login-action@v3
-      with:
-        registry: ${{ secrets.REGISTRY_LOGIN_SERVER }}
-        username: ${{ secrets.REGISTRY_USERNAME }}
-        password: ${{ secrets.REGISTRY_PASSWORD }}
-    
-    - name: Build and push Docker image
-      id: build
-      env:
-        REGISTRY_LOGIN_SERVER: ${{ secrets.REGISTRY_LOGIN_SERVER }}
-      run: |
-        IMAGE_TAG="$REGISTRY_LOGIN_SERVER/${{ env.IMAGE_REPOSITORY }}:main-${{ github.sha }}"
-        LATEST_TAG="$REGISTRY_LOGIN_SERVER/${{ env.IMAGE_REPOSITORY }}:latest"
-        echo "Building image with tags:"
-        echo "  - $IMAGE_TAG"
-        echo "  - $LATEST_TAG"
-        docker build -t $IMAGE_TAG -t $LATEST_TAG .
-        docker push $IMAGE_TAG
-        docker push $LATEST_TAG
-        echo "Verifying image was pushed..."
-        docker pull $IMAGE_TAG
-        echo "✅ Image successfully built and pushed: $IMAGE_TAG"
-        echo "tags=$IMAGE_TAG" >> $GITHUB_OUTPUT
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          if [ -f requirements-test.txt ]; then
+            pip install -r requirements-test.txt
+          fi
+      - name: Run Snyk security scan
+        uses: snyk/actions/python-3.11@master
+        continue-on-error: true
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        with:
+          args: --severity-threshold=high
+      - name: Run tests
+        run: |
+          python -m pytest test_app.py -v --junitxml=junit/test-results.xml
+      - name: Run linting
+        run: |
+          python -m pylint app.py --exit-zero --output-format=parseable --reports=no > pylint-report.txt
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            junit/test-results.xml
+            pylint-report.txt
+      - name: Set build tag
+        id: build_tag
+        run: echo "BUILD_ID=$GITHUB_RUN_NUMBER" >> $GITHUB_ENV && echo "BUILD_ID=$GITHUB_RUN_NUMBER" >> $GITHUB_OUTPUT
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Check required secrets
+        run: |
+          echo "Checking required secrets..."
+          if [ -z "${{ secrets.REGISTRY_LOGIN_SERVER }}" ]; then
+            echo "❌ REGISTRY_LOGIN_SERVER secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.REGISTRY_USERNAME }}" ]; then
+            echo "❌ REGISTRY_USERNAME secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.REGISTRY_PASSWORD }}" ]; then
+            echo "❌ REGISTRY_PASSWORD secret is not set"
+            exit 1
+          fi
+          echo "✅ All registry secrets are configured"
+      - name: Log in to Azure Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ env.IMAGE_REPOSITORY }} .
+      - name: Tag Docker image
+        run: |
+          docker tag ${{ env.IMAGE_REPOSITORY }} ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_REPOSITORY }}:${{ env.BUILD_ID }}
+      - name: Push Docker image to ACR
+        run: |
+          docker push ${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_REPOSITORY }}:${{ env.BUILD_ID }}
 
-  deploy-to-aks:
-    needs: build-and-push-docker
+  deploy:
+    needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Azure Login
-      uses: azure/login@v1
-      with:
-        creds: |
-          {
-            "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
-            "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
-            "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
-            "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
-          }
-    
-    - name: Set up kubectl
-      uses: azure/setup-kubectl@v3
-      with:
-        version: 'latest'
-    
-    - name: Get AKS credentials
-      env:
-        AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
-        AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
-      run: |
-        az aks get-credentials --resource-group "$AKS_RESOURCE_GROUP" --name "$AKS_CLUSTER_NAME"
-    
-    - name: Create namespace and secrets
-      env:
-        REGISTRY_LOGIN_SERVER: ${{ secrets.REGISTRY_LOGIN_SERVER }}
-        REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
-        REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
-      run: |
-        kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
-        kubectl delete secret acr-secret -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
-        kubectl create secret docker-registry acr-secret \
-          --docker-server=$REGISTRY_LOGIN_SERVER \
-          --docker-username=$REGISTRY_USERNAME \
-          --docker-password=$REGISTRY_PASSWORD \
-          --namespace=${{ env.K8S_NAMESPACE }}
-        kubectl get secret acr-secret -n ${{ env.K8S_NAMESPACE }} -o yaml
-        echo "Testing Docker login..."
-        echo "$REGISTRY_PASSWORD" | docker login $REGISTRY_LOGIN_SERVER --username $REGISTRY_USERNAME --password-stdin
-        IMAGE_TAG="$REGISTRY_LOGIN_SERVER/${{ env.IMAGE_REPOSITORY }}:main-${{ github.sha }}"
-        echo "Testing image accessibility: $IMAGE_TAG"
-        docker pull $IMAGE_TAG
-        echo "Available images in registry:"
-        docker images | grep python-flask-app || echo "No python-flask-app images found locally"
-    
-    - name: Deploy to AKS
-      env:
-        REGISTRY_LOGIN_SERVER: ${{ secrets.REGISTRY_LOGIN_SERVER }}
-      run: |
-        IMAGE_TAG="$REGISTRY_LOGIN_SERVER/${{ env.IMAGE_REPOSITORY }}:main-${{ github.sha }}"
-        echo "Deploying image: $IMAGE_TAG"
-        sed -i "s|REGISTRY_LOGIN_SERVER/python-flask-app:latest|${IMAGE_TAG}|g" k8s-deployment.yaml
-        echo "Updated deployment.yaml:"
-        grep "image:" k8s-deployment.yaml
-        kubectl apply -f k8s-deployment.yaml
-        echo "Initial pod status:"
-        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=python-flask-app
-        echo "Waiting for deployment to complete..."
-        for i in {1..30}; do
-          echo "Check $i: $(date)"
-          kubectl get deployment python-flask-app -n ${{ env.K8S_NAMESPACE }}
-          kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=python-flask-app
-          if kubectl get deployment python-flask-app -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.readyReplicas}' | grep -q "1"; then
-            echo "✅ Deployment successful!"
-            break
-          fi
-          echo "Pod details:"
-          kubectl describe pods -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} | tail -20
-          echo "Pod logs:"
-          kubectl logs -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} --tail=10 || echo "No logs available yet"
-          echo "Waiting 20 seconds..."
-          sleep 20
-        done
-        echo "Final deployment status:"
-        kubectl get deployment python-flask-app -n ${{ env.K8S_NAMESPACE }}
-        kubectl get pods -n ${{ env.K8S_NAMESPACE }} -l app=python-flask-app
-        kubectl get services -n ${{ env.K8S_NAMESPACE }}
-        READY_REPLICAS=$(kubectl get deployment python-flask-app -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.readyReplicas}')
-        if [ "$READY_REPLICAS" != "1" ]; then
-          echo "❌ Deployment failed! Final debug information:"
-          kubectl describe deployment python-flask-app -n ${{ env.K8S_NAMESPACE }}
-          kubectl describe pods -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }}
-          kubectl logs -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} --tail=50
-          exit 1
-        fi
-    
-    - name: Run post-deployment tests
-      run: |
-        kubectl wait --for=condition=ready pod -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} --timeout=300s
-        kubectl port-forward svc/python-flask-app-service 8080:80 -n ${{ env.K8S_NAMESPACE }} &
-        sleep 10
-        curl -f http://localhost:8080/ || exit 1
-        echo "✅ Deployment successful and application is healthy!"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: |
+            {
+              "clientId": "${{ secrets.AZURE_CLIENT_ID }}",
+              "clientSecret": "${{ secrets.AZURE_CLIENT_SECRET }}",
+              "subscriptionId": "${{ secrets.AZURE_SUBSCRIPTION_ID }}",
+              "tenantId": "${{ secrets.AZURE_TENANT_ID }}"
+            }
+      - name: Get AKS credentials
+        env:
+          AKS_RESOURCE_GROUP: ${{ secrets.AKS_RESOURCE_GROUP }}
+          AKS_CLUSTER_NAME: ${{ secrets.AKS_CLUSTER_NAME }}
+        run: |
+          az aks get-credentials --resource-group "$AKS_RESOURCE_GROUP" --name "$AKS_CLUSTER_NAME"
+      - name: Create namespace and secrets
+        env:
+          REGISTRY_LOGIN_SERVER: ${{ secrets.REGISTRY_LOGIN_SERVER }}
+          REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+        run: |
+          kubectl create namespace ${{ env.K8S_NAMESPACE }} --dry-run=client -o yaml | kubectl apply -f -
+          kubectl delete secret acr-secret -n ${{ env.K8S_NAMESPACE }} --ignore-not-found=true
+          kubectl create secret docker-registry acr-secret \
+            --docker-server=$REGISTRY_LOGIN_SERVER \
+            --docker-username=$REGISTRY_USERNAME \
+            --docker-password=$REGISTRY_PASSWORD \
+            --namespace=${{ env.K8S_NAMESPACE }}
+          kubectl get secret acr-secret -n ${{ env.K8S_NAMESPACE }} -o yaml
+      - name: Set image tag in deployment file
+        run: |
+          sed -i "s|REGISTRY_LOGIN_SERVER/python-flask-app:latest|${{ secrets.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_REPOSITORY }}:${{ needs.build.outputs.build_id }}|g" k8s-deployment.yaml
+      - name: Deploy to AKS
+        run: |
+          kubectl apply -f k8s-deployment.yaml
+      - name: Wait for pod readiness
+        run: |
+          kubectl wait --for=condition=ready pod -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+      - name: Port-forward and health check
+        run: |
+          kubectl port-forward svc/python-flask-app-service 8080:80 -n ${{ env.K8S_NAMESPACE }} &
+          sleep 10
+          curl -f http://localhost:8080/ || exit 1
+          echo "✅ Deployment successful and application is healthy!"
