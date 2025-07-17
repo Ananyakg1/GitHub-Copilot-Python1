@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ main ] 
 
-env:
+env: 
   APP_NAME: python-flask-app
   IMAGE_NAME: python-flask-app
   NAMESPACE: github-copilot-ns
