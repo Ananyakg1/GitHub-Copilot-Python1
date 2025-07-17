@@ -2,16 +2,20 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, develop ] 
   pull_request:
     branches: [ main ] 
 
-env: 
-  APP_NAME: python-flask-app
-  IMAGE_NAME: python-flask-app
-  NAMESPACE: github-copilot-ns
 
 jobs:
+  push:
+    branches: [ main, develop ] 
+  pull_request:
+    branches: [ main ] 
+
+permissions:
+  id-token: write
+  contents: read
   build-and-test:
     runs-on: ubuntu-latest
     
