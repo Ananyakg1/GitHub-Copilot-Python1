@@ -45,7 +45,7 @@ def test_change_endpoint(client):
     assert data['input'] == '$1.34'
     assert 'change' in data
     assert 'timestamp' in data
-    assert data['change'] == [{5: 'quarters'}, {1: 'nickels'}, {4: 'pennies'}]
+    assert data['change'] == [{'5': 'quarters'}, {'1': 'nickels'}, {'4': 'pennies'}]
 
 
 def test_change_endpoint_invalid_input(client):
@@ -62,9 +62,11 @@ def test_change_endpoint_edge_cases(client):
     # Test with zero
     response = client.get('/change/0/00')
     assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data['change'] == []  # No change needed for $0.00
     
     # Test with quarters only
     response = client.get('/change/0/25')
     assert response.status_code == 200
     data = json.loads(response.data)
-    assert data['change'] == [{1: 'quarters'}]
+    assert data['change'] == [{'1': 'quarters'}]

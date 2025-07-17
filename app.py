@@ -29,13 +29,14 @@ def change(amount):
         coin = coins.pop()
         num, rem = divmod(int(amount * 100), coin)
         # append the coin type and number of coins that had no remainder
-        res.append({num: coin_lookup[coin]})
+        if num > 0:  # Only add if there are coins
+            res.append({num: coin_lookup[coin]})
 
         # while there is still some remainder, continue adding coins to the result
         while rem > 0:
             coin = coins.pop()
             num, rem = divmod(rem, coin)
-            if num:
+            if num > 0:  # Only add if there are coins
                 if coin in coin_lookup:
                     res.append({num: coin_lookup[coin]})
         
