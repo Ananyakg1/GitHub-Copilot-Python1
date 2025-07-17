@@ -29,7 +29,7 @@ spec:
     spec:
       containers:
       - name: python-flask-app
-        image: ${REGISTRY_LOGIN_SERVER}/${IMAGE_NAME}:${GITHUB_SHA}
+        image: ${REGISTRY_LOGIN_SERVER}/${IMAGE_NAME}:latest
         ports:
         - containerPort: 8080
           name: http
