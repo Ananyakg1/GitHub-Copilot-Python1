@@ -139,6 +139,15 @@ jobs:
       - name: Wait for pod readiness
         run: |
           kubectl wait --for=condition=ready pod -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} --timeout=300s
+      - name: Debug failed pods if not all ready
+        if: failure()
+        run: |
+          echo "--- POD STATUS ---"
+          kubectl get pods -n ${{ env.K8S_NAMESPACE }}
+          echo "--- POD DESCRIBE ---"
+          kubectl describe pods -n ${{ env.K8S_NAMESPACE }}
+          echo "--- POD LOGS (last 50 lines) ---"
+          kubectl logs -l app=python-flask-app -n ${{ env.K8S_NAMESPACE }} --tail=50 || true
       - name: Port-forward and health check
         run: |
           kubectl port-forward svc/python-flask-app-service 8080:80 -n ${{ env.K8S_NAMESPACE }} &
