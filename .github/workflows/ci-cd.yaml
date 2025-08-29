@@ -20,10 +20,14 @@ jobs:
           echo "BUILD_ID=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
           echo "IMAGE_TAG=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
 
-      - name: Install Azure CLI and additional dependencies
+
+      - name: Install additional dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y ca-certificates curl apt-transport-https lsb-release gnupg jq wget
+
+      - name: Install Azure CLI
+        run: |
           curl -sL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
           AZ_REPO=$(lsb_release -cs)
           echo "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
