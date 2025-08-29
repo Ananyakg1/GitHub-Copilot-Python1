@@ -20,16 +20,18 @@ jobs:
           echo "BUILD_ID=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
           echo "IMAGE_TAG=$(date +'%Y%m%d%H%M%S')" >> $GITHUB_ENV
 
-      - name: Install Azure CLI
-        uses: azure/setup-azurecli@v3
-
-      - name: Install additional dependencies
+      - name: Install Azure CLI and additional dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y curl jq
+          sudo apt-get update
+          sudo apt-get install -y ca-certificates curl apt-transport-https lsb-release gnupg jq wget
+          curl -sL https://packages.microsoft.com/keys/microsoft.asc | sudo gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/microsoft.gpg > /dev/null
+          AZ_REPO=$(lsb_release -cs)
+          echo "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/microsoft.gpg] https://packages.microsoft.com/repos/azure-cli/ $AZ_REPO main" | sudo tee /etc/apt/sources.list.d/azure-cli.list
+          sudo apt-get update
+          sudo apt-get install -y azure-cli
 
       - name: Install Trivy security scanner
         run: |
-          sudo apt-get install -y wget
           wget -qO- https://github.com/aquasecurity/trivy/releases/download/v0.48.4/trivy_0.48.4_Linux-64bit.deb > trivy.deb
           sudo dpkg -i trivy.deb
 
