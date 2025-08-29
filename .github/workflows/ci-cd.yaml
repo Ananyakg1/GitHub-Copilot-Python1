@@ -38,7 +38,8 @@ jobs:
       - name: Install Trivy security scanner
         run: |
           wget -qO- https://github.com/aquasecurity/trivy/releases/download/v0.48.4/trivy_0.48.4_Linux-64bit.deb > trivy.deb
-          sudo dpkg -i trivy.deb
+          sudo dpkg -i trivy.deb || true
+          sudo apt-get install -f -y
 
   build:
     name: Build and Scan
