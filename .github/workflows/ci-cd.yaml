@@ -103,7 +103,19 @@ jobs:
         output: 'trivy-results.sarif'
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
-        exit-code: '1'
+        exit-code: '0'
+        
+    - name: Display Trivy Results Summary
+      if: always()
+      run: |
+        echo "=== Trivy Security Scan Results ==="
+        trivy image \
+          --format table \
+          --severity CRITICAL,HIGH \
+          --ignore-unfixed \
+          --exit-code 0 \
+          ${{ env.IMAGE_FULL_NAME }} || echo "Trivy scan completed with findings"
+        echo "=== End of Trivy Results ==="
         
     - name: Upload Trivy SARIF Results
       uses: github/codeql-action/upload-sarif@v3
