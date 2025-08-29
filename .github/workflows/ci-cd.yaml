@@ -95,47 +95,6 @@ jobs:
           --exit-code 0 \
           ${{ env.IMAGE_FULL_NAME }}
           
-    - name: Run Trivy Security Scan - SARIF Format
-      run: |
-        echo "Running Trivy SARIF scan..."
-        TRIVY_DISABLE_VEX_NOTICE=true trivy image \
-          --format sarif \
-          --output trivy-results.sarif \
-          --severity CRITICAL,HIGH \
-          --ignore-unfixed \
-          --exit-code 0 \
-          ${{ env.IMAGE_FULL_NAME }}
-        
-        # Validate SARIF file
-        if [ -f trivy-results.sarif ]; then
-          echo "SARIF file generated successfully"
-          # Check if it's valid JSON
-          if jq empty trivy-results.sarif 2>/dev/null; then
-            echo "SARIF file is valid JSON"
-          else
-            echo "SARIF file is invalid JSON, creating minimal valid SARIF"
-            cat > trivy-results.sarif << 'EOF'
-        {
-          "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-          "version": "2.1.0",
-          "runs": [
-            {
-              "tool": {
-                "driver": {
-                  "name": "Trivy",
-                  "version": "0.56.1"
-                }
-              },
-              "results": []
-            }
-          ]
-        }
-        EOF
-          fi
-        else
-          echo "SARIF file not generated"
-        fi
-        
     - name: Display Trivy Results Summary
       if: always()
       run: |
@@ -147,12 +106,6 @@ jobs:
           --exit-code 0 \
           ${{ env.IMAGE_FULL_NAME }} || echo "Trivy scan completed with findings"
         echo "=== End of Trivy Results ==="
-        
-    - name: Upload Trivy SARIF Results
-      uses: github/codeql-action/upload-sarif@v3
-      if: always()
-      with:
-        sarif_file: 'trivy-results.sarif'
         
     - name: Run Trivy Filesystem Scan
       run: |
