@@ -1,44 +1,57 @@
-# Secure Dockerfile for Flask Application
-# Use a specific, minimal, and secure Python base image
-FROM python:3.11.8-slim-bullseye
+# Use specific Python version based on slim image for security
+FROM python:3.11.7-slim-bookworm
 
-# Set environment variables for security
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    FLASK_ENV=production
+# Set metadata
+LABEL maintainer="github-copilot-app" \
+      version="1.0.0" \
+      description="Secure Flask application for change calculation"
 
-# Create a non-root user and group
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PORT=8080 \
+    HOST=0.0.0.0
 
-# Set work directory
+# Create non-root user
+RUN groupadd -r appgroup && \
+    useradd -r -g appgroup -d /app -s /bin/bash appuser && \
+    mkdir -p /app && \
+    chown -R appuser:appgroup /app
+
+# Install security updates and required packages
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y --no-install-recommends \
+        curl \
+        ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies securely
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y gcc libpq-dev \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Copy requirements first for better caching
+COPY --chown=appuser:appgroup requirements.txt .
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with security considerations
+RUN pip install --no-cache-dir --upgrade pip==23.3.2 && \
+    pip install --no-cache-dir --no-deps -r requirements.txt && \
+    pip check
 
 # Copy application code
-COPY app.py .
-
-# Change ownership to non-root user
-RUN chown -R appuser:appuser /app
+COPY --chown=appuser:appgroup app.py .
 
 # Switch to non-root user
 USER appuser
 
-# Expose the application port
+# Expose port
 EXPOSE 8080
 
-# Healthcheck for the Flask app
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl --fail http://localhost:8080/health || exit 1
+# Add health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the application with Gunicorn for production
-CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app", "--workers=2", "--threads=4", "--access-logfile=-", "--error-logfile=-"]
+# Use gunicorn for production with security settings
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--threads", "2", "--timeout", "60", "--keep-alive", "2", "--max-requests", "1000", "--max-requests-jitter", "100", "--preload", "app:app"]
