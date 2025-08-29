@@ -37,7 +37,7 @@ COPY --chown=appuser:appgroup requirements.txt .
 
 # Install Python dependencies with security considerations
 RUN pip install --no-cache-dir --upgrade pip==23.3.2 && \
-    pip install --no-cache-dir --no-deps -r requirements.txt && \
+    pip install --no-cache-dir -r requirements.txt && \
     pip check
 
 # Copy application code
