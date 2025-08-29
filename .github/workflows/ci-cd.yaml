@@ -104,12 +104,14 @@ jobs:
         severity: 'CRITICAL,HIGH'
         ignore-unfixed: true
         exit-code: '0'
+      env:
+        TRIVY_DISABLE_VEX_NOTICE: true
         
     - name: Display Trivy Results Summary
       if: always()
       run: |
         echo "=== Trivy Security Scan Results ==="
-        trivy image \
+        TRIVY_DISABLE_VEX_NOTICE=true trivy image \
           --format table \
           --severity CRITICAL,HIGH \
           --ignore-unfixed \
