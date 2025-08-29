@@ -1,54 +1,44 @@
-# Use a specific Python version with security updates
-FROM python:3.11-slim-bullseye
+# Secure Dockerfile for Flask Application
+# Use a specific, minimal, and secure Python base image
+FROM python:3.11.8-slim-bullseye
 
-# Set environment variables
+# Set environment variables for security
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    FLASK_ENV=production
 
-# Create a non-root user
+# Create a non-root user and group
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 # Set work directory
 WORKDIR /app
 
-# Install system dependencies and security updates
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    libc6-dev \
-    && apt-get upgrade -y \
+# Install system dependencies securely
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y gcc libpq-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better caching
+# Copy requirements and install Python dependencies
 COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
 
-# Change ownership of the app directory to appuser
+# Change ownership to non-root user
 RUN chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
 
-# Expose port
+# Expose the application port
 EXPOSE 8080
 
-# Install curl for health check
-USER root
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-USER appuser
+# Healthcheck for the Flask app
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl --fail http://localhost:8080/health || exit 1
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Run the application with gunicorn for production
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "app:app"]
+# Run the application with Gunicorn for production
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app", "--workers=2", "--threads=4", "--access-logfile=-", "--error-logfile=-"]
