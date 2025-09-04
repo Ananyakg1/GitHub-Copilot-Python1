@@ -174,7 +174,38 @@ jobs:
         
     - name: Wait for Deployment Rollout
       run: |
-        kubectl rollout status deployment/flask-change-calculator -n ${{ env.NAMESPACE }} --timeout=300s
+        echo "Starting deployment rollout check..."
+        kubectl rollout status deployment/flask-change-calculator -n ${{ env.NAMESPACE }} --timeout=600s
+        
+    - name: Debug Deployment Issues
+      if: failure()
+      run: |
+        echo "=== Deployment failed, gathering debug information ==="
+        
+        echo "=== Deployment Status ==="
+        kubectl get deployment flask-change-calculator -n ${{ env.NAMESPACE }} -o wide || echo "Could not get deployment"
+        
+        echo "=== ReplicaSet Status ==="
+        kubectl get replicasets -n ${{ env.NAMESPACE }} -l app=flask-change-calculator || echo "Could not get replicasets"
+        
+        echo "=== Pod Status ==="
+        kubectl get pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator -o wide || echo "Could not get pods"
+        
+        echo "=== Pod Descriptions ==="
+        kubectl describe pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator || echo "Could not describe pods"
+        
+        echo "=== Pod Logs ==="
+        for pod in $(kubectl get pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator -o jsonpath='{.items[*].metadata.name}'); do
+          echo "--- Logs for pod: $pod ---"
+          kubectl logs $pod -n ${{ env.NAMESPACE }} --tail=50 || echo "Could not get logs for $pod"
+        done
+        
+        echo "=== Events ==="
+        kubectl get events -n ${{ env.NAMESPACE }} --sort-by='.metadata.creationTimestamp' --field-selector reason!=Scheduled || echo "Could not get events"
+        
+        echo "=== Node Resources ==="
+        kubectl top nodes || echo "Could not get node resources"
+        kubectl describe nodes || echo "Could not describe nodes"
         
     - name: Verify Deployment
       run: |
