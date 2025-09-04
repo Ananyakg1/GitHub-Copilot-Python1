@@ -39,7 +39,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip==24.0 && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir --upgrade \
-        setuptools==69.0.0 \
+        setuptools==78.1.1 \
         wheel==0.42.0
 
 # Remove build dependencies
