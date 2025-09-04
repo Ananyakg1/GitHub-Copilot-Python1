@@ -1,15 +1,15 @@
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: flask-app-network-policy
+  name: flask-change-calculator-netpol
   namespace: github-copilot-ns
   labels:
-    app: flask-app
+    app: flask-change-calculator
     environment: production
 spec:
   podSelector:
     matchLabels:
-      app: flask-app
+      app: flask-change-calculator
   policyTypes:
   - Ingress
   - Egress
@@ -17,72 +17,27 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          name: kube-system
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          name: github-copilot-ns
     - podSelector: {}
     ports:
     - protocol: TCP
       port: 8080
   egress:
+  # Allow DNS resolution
   - to: []
     ports:
-    - protocol: TCP
-      port: 53
     - protocol: UDP
       port: 53
+  # Allow HTTPS outbound for health checks and monitoring
   - to: []
     ports:
     - protocol: TCP
       port: 443
+  # Allow HTTP outbound
+  - to: []
+    ports:
     - protocol: TCP
       port: 80
----
-apiVersion: policy/v1
-kind: PodDisruptionBudget
-metadata:
-  name: flask-app-pdb
-  namespace: github-copilot-ns
-  labels:
-    app: flask-app
-    environment: production
-spec:
-  minAvailable: 2
-  selector:
-    matchLabels:
-      app: flask-app
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: flask-app-ingress
-  namespace: github-copilot-ns
-  labels:
-    app: flask-app
-    environment: production
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/proxy-body-size: "1m"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "30"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "30"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
-spec:
-  rules:
-  - host: flask-app.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: flask-app-service
-            port:
-              number: 8080
-  tls:
-  - hosts:
-    - flask-app.example.com
-    secretName: flask-app-tls

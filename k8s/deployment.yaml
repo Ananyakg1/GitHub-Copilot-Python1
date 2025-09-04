@@ -12,66 +12,82 @@ metadata:
   name: app-config
   namespace: github-copilot-ns
   labels:
-    app: flask-app
+    app: flask-change-calculator
     environment: production
 data:
-  PORT: "8080"
   HOST: "0.0.0.0"
-  DEBUG: "false"
+  PORT: "8080"
+  DEBUG: "False"
+  PYTHONUNBUFFERED: "1"
   ENVIRONMENT: "production"
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: flask-app-deployment
+  name: flask-change-calculator
   namespace: github-copilot-ns
   labels:
-    app: flask-app
-    version: v1
+    app: flask-change-calculator
     environment: production
+    version: "1.0.0"
 spec:
   replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
   selector:
     matchLabels:
-      app: flask-app
+      app: flask-change-calculator
   template:
     metadata:
       labels:
-        app: flask-app
-        version: v1
+        app: flask-change-calculator
         environment: production
+        version: "1.0.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/health"
     spec:
-      serviceAccountName: flask-app-sa
+      serviceAccountName: default
       securityContext:
         runAsNonRoot: true
-        runAsUser: 1000
-        runAsGroup: 1000
-        fsGroup: 1000
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       containers:
       - name: flask-app
         image: app_image
+        imagePullPolicy: Always
         ports:
         - containerPort: 8080
           name: http
           protocol: TCP
         env:
-        - name: PORT
-          valueFrom:
-            configMapKeyRef:
-              name: app-config
-              key: PORT
         - name: HOST
           valueFrom:
             configMapKeyRef:
               name: app-config
               key: HOST
+        - name: PORT
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: PORT
         - name: DEBUG
           valueFrom:
             configMapKeyRef:
               name: app-config
               key: DEBUG
+        - name: PYTHONUNBUFFERED
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: PYTHONUNBUFFERED
         - name: ENVIRONMENT
           valueFrom:
             configMapKeyRef:
@@ -79,13 +95,13 @@ spec:
               key: ENVIRONMENT
         securityContext:
           allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: true
+          readOnlyRootFilesystem: false
           runAsNonRoot: true
-          runAsUser: 1000
-          runAsGroup: 1000
+          runAsUser: 1001
+          runAsGroup: 1001
           capabilities:
             drop:
-            - ALL
+              - ALL
           seccompProfile:
             type: RuntimeDefault
         resources:
@@ -93,8 +109,8 @@ spec:
             memory: "128Mi"
             cpu: "100m"
           limits:
-            memory: "256Mi"
-            cpu: "200m"
+            memory: "512Mi"
+            cpu: "500m"
         livenessProbe:
           httpGet:
             path: /health
@@ -125,43 +141,24 @@ spec:
           timeoutSeconds: 3
           successThreshold: 1
           failureThreshold: 30
-        volumeMounts:
-        - name: tmp-volume
-          mountPath: /tmp
-        - name: var-log-volume
-          mountPath: /var/log
-      volumes:
-      - name: tmp-volume
-        emptyDir: {}
-      - name: var-log-volume
-        emptyDir: {}
       restartPolicy: Always
       terminationGracePeriodSeconds: 30
+      dnsPolicy: ClusterFirst
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: flask-app-service
+  name: flask-change-calculator-service
   namespace: github-copilot-ns
   labels:
-    app: flask-app
+    app: flask-change-calculator
     environment: production
 spec:
   type: ClusterIP
   ports:
-  - port: 8080
+  - port: 80
     targetPort: 8080
     protocol: TCP
     name: http
   selector:
-    app: flask-app
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: flask-app-sa
-  namespace: github-copilot-ns
-  labels:
-    app: flask-app
-    environment: production
-automountServiceAccountToken: false
+    app: flask-change-calculator

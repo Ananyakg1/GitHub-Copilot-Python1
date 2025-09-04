@@ -1,4 +1,8 @@
-# Python
+# Ignore version control
+.git
+.gitignore
+
+# Ignore Python artifacts
 __pycache__/
 *.py[cod]
 *$py.class
@@ -21,74 +25,21 @@ wheels/
 *.egg
 MANIFEST
 
-# PyInstaller
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# celery beat schedule file
-celerybeat-schedule
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
+# Ignore virtual environments
 venv/
+env/
 ENV/
 env.bak/
 venv.bak/
 
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# IDE
+# Ignore IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# Ignore OS generated files
 .DS_Store
 .DS_Store?
 ._*
@@ -97,56 +48,34 @@ dmypy.json
 ehthumbs.db
 Thumbs.db
 
-# Logs
+# Ignore logs
 *.log
 logs/
 
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
+# Ignore temporary files
+*.tmp
+*.temp
+temp/
+tmp/
 
-# Coverage directory used by tools like istanbul
-coverage/
+# Ignore test coverage files
+.coverage
+htmlcov/
+.pytest_cache/
 
-# nyc test coverage
-.nyc_output
+# Ignore documentation build
+docs/_build/
 
-# Dependency directories
+# Ignore environment files
+.env
+.env.local
+.env.production
+.env.test
+
+# Ignore node modules (if any)
 node_modules/
 
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Git
-.git
-.gitignore
-.gitattributes
-
-# Documentation
-README.md
-*.md
-
-# Configuration files
-.editorconfig
+# Ignore container-specific files
 .dockerignore
-
-# CI/CD
-.github/
-.gitlab-ci.yml
-Jenkinsfile
-
-# Security
-*.pem
-*.key
-*.crt
-*.csr
-
-# Temporary files
-tmp/
-temp/
-*.tmp
+Dockerfile.dev
+docker-compose.override.yml
