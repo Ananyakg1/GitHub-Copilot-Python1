@@ -167,15 +167,70 @@ jobs:
         sed -i 's|app_image|${{ env.REGISTRY_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ needs.build.outputs.image-tag }}|g' k8s/deployment.yaml
         cat k8s/deployment.yaml
         
+    - name: Clean Up Previous Deployments
+      run: |
+        echo "Cleaning up any previous failed deployments..."
+        kubectl delete pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator --force --grace-period=0 || echo "No pods to delete"
+        kubectl delete deployment flask-change-calculator -n ${{ env.NAMESPACE }} --ignore-not-found=true
+        sleep 10
+        
     - name: Deploy to AKS
       run: |
         echo "Deploying application to AKS cluster..."
         kubectl apply -f k8s/ -n ${{ env.NAMESPACE }}
         
+    - name: Pre-Rollout Debugging
+      run: |
+        echo "=== Pre-Rollout Status Check ==="
+        echo "Checking deployment status before rollout..."
+        kubectl get deployment flask-change-calculator -n ${{ env.NAMESPACE }} -o wide || echo "Deployment not found"
+        
+        echo "=== Checking ReplicaSets ==="
+        kubectl get replicasets -n ${{ env.NAMESPACE }} -l app=flask-change-calculator -o wide || echo "No ReplicaSets found"
+        
+        echo "=== Checking Pods ==="
+        kubectl get pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator -o wide || echo "No pods found"
+        
+        echo "=== Checking Events ==="
+        kubectl get events -n ${{ env.NAMESPACE }} --sort-by='.metadata.creationTimestamp' | tail -20 || echo "No events"
+        
+        echo "=== Node Resources ==="
+        kubectl describe nodes --selector='!node-role.kubernetes.io/master' | grep -A 5 "Allocated resources" || echo "Could not get node resources"
+        
+        echo "=== Namespace Resources ==="
+        kubectl top pods -n ${{ env.NAMESPACE }} || echo "Could not get pod metrics"
+        
+        sleep 30
+        
     - name: Wait for Deployment Rollout
       run: |
         echo "Starting deployment rollout check..."
         kubectl rollout status deployment/flask-change-calculator -n ${{ env.NAMESPACE }} --timeout=600s
+        
+    - name: Alternative Deployment Check
+      if: failure()
+      run: |
+        echo "Rollout status failed, trying alternative verification..."
+        
+        # Wait for pods to be ready manually
+        for i in {1..60}; do
+          ready_pods=$(kubectl get pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator --field-selector=status.phase=Running -o jsonpath='{.items[?(@.status.containerStatuses[0].ready==true)].metadata.name}' | wc -w)
+          total_pods=$(kubectl get pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator -o jsonpath='{.items[*].metadata.name}' | wc -w)
+          
+          echo "Attempt $i/60: Ready pods: $ready_pods, Total pods: $total_pods"
+          
+          if [ "$ready_pods" -ge 1 ] && [ "$total_pods" -ge 1 ]; then
+            echo "✅ At least 1 pod is ready and running!"
+            kubectl get pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator
+            exit 0
+          fi
+          
+          kubectl get pods -n ${{ env.NAMESPACE }} -l app=flask-change-calculator
+          sleep 10
+        done
+        
+        echo "❌ Deployment verification failed after 10 minutes"
+        exit 1
         
     - name: Debug Deployment Issues
       if: failure()
