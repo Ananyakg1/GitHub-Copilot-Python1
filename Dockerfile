@@ -19,10 +19,13 @@ RUN apk update && \
     apk upgrade && \
     apk add --no-cache \
         ca-certificates \
-        tzdata && \
+        tzdata \
+        curl \
+        bash && \
     apk add --no-cache --virtual .build-deps \
         gcc \
-        musl-dev && \
+        musl-dev \
+        linux-headers && \
     rm -rf /var/cache/apk/*
 
 # Create non-root user
@@ -45,11 +48,13 @@ RUN pip install --no-cache-dir --upgrade pip==24.0 && \
 # Remove build dependencies
 RUN apk del .build-deps
 
-# Copy application code
+# Copy application code and startup script
 COPY app.py .
+COPY start.sh .
 
-# Change ownership to non-root user
-RUN chown -R appuser:appgroup /app
+# Make startup script executable and change ownership to non-root user
+RUN chmod +x start.sh && \
+    chown -R appuser:appgroup /app
 
 # Switch to non-root user
 USER appuser
@@ -62,4 +67,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')" || exit 1
 
 # Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--timeout", "120", "--keepalive", "2", "--max-requests", "1000", "--preload", "app:app"]
+CMD ["./start.sh"]

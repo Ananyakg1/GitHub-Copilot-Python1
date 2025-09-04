@@ -79,3 +79,6 @@ node_modules/
 .dockerignore
 Dockerfile.dev
 docker-compose.override.yml
+
+# Include startup script
+!start.sh
